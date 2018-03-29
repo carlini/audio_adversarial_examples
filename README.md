@@ -1,5 +1,7 @@
+## Audio Adversarial Examples
+
 This is the code corresponding to the paper
-"Audio Adversarial Examples: Targeted Attacks on Speech-to-Text"
+["Audio Adversarial Examples: Targeted Attacks on Speech-to-Text"](https://arxiv.org/abs/1801.01944)
 Nicholas Carlini and David Wagner
 
 This release of the code is preliminary; it includes the CTC-based attack with a
@@ -13,36 +15,37 @@ and modify the arguments to attack,py. Ensure that the file is sampled at
 is allowed to run.
 
 
-Instructions for basic use:
+### Instructions for basic use:
 
 1. Install the dependencies
 
-pip3 install --user numpy scipy tensorflow-gpu pandas python_speech_features
+`pip3 install --user numpy scipy tensorflow-gpu pandas python_speech_features`
 
 2. Clone the Mozilla DeepSpeech repository into a folder called DeepSpeech:
 
-git clone https://github.com/mozilla/DeepSpeech.git
+`git clone https://github.com/mozilla/DeepSpeech.git`
 
 3. Download the DeepSpeech model
 
-wget https://github.com/mozilla/DeepSpeech/releases/download/v0.1.0/deepspeech-0.1.0-models.tar.gz
-tar -xzf deepspeech-0.1.0-models.tar.gz
+`wget https://github.com/mozilla/DeepSpeech/releases/download/v0.1.0/deepspeech-0.1.0-models.tar.gz`
+<br/>
+`tar -xzf deepspeech-0.1.0-models.tar.gz`
 
 4. Verify that you have a file models/output_graph.pb, it's MD5 sum should be
 08a9e6e8dc450007a0df0a37956bc795.
 
 5. Convert the .pb to a TensorFlow checkpoint file
 
-python3 make_checkpoint.py
+`python3 make_checkpoint.py`
 
 6. Generate adversarial examples
 
-python3 attack.py --in sample.wav --target "example" --out adversarial.wav
+`python3 attack.py --in sample.wav --target "example" --out adversarial.wav`
 
 7. (optional) Install the deepseech utility:
 
-pip3 install deepspeech-gpu
+`pip3 install deepspeech-gpu`
 
 8. Classify the generated phrase
 
-deepspeech models/output_graph.pb adversarial.wav models/alphabet.txt
+`deepspeech models/output_graph.pb adversarial.wav models/alphabet.txt`

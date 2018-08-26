@@ -23,6 +23,10 @@ pip3 install --user numpy scipy tensorflow-gpu pandas python_speech_features
 
 git clone https://github.com/mozilla/DeepSpeech.git
 
+2b. Checkout the correct version of the code:
+
+(cd DeepSpeech; git checkout tags/v0.1.1)
+
 3. Download the DeepSpeech model
 
 wget https://github.com/mozilla/DeepSpeech/releases/download/v0.1.0/deepspeech-0.1.0-models.tar.gz

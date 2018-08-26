@@ -23,7 +23,7 @@ tf.load_op_library = lambda x: x
 import DeepSpeech as DeepSpeech
 
 graph_def = GraphDef()
-loaded = graph_def.ParseFromString(open("models/saved_model.pb","rb").read())
+loaded = graph_def.ParseFromString(open("models/output_graph.pb","rb").read())
 
 with tf.Graph().as_default() as graph:
     new_input = tf.placeholder(tf.float32, [None, None, None],

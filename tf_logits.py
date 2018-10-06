@@ -103,4 +103,3 @@ def get_logits(new_input, length, first=[]):
     logits = DeepSpeech.BiRNN(features, length, [0]*10)
 
     return logits
-

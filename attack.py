@@ -16,6 +16,7 @@ import struct
 import time
 import os
 import sys
+import string
 from collections import namedtuple
 sys.path.append("DeepSpeech")
 
@@ -57,7 +58,7 @@ from tf_logits import get_logits
 # These are the tokens that we're allowed to use.
 # The - token is special and corresponds to the epsilon
 # value in CTC decoding, and can not occur in the phrase.
-toks = " abcdefghijklmnopqrstuvwxyz'-"
+toks = " " + string.ascii_lowercase + "'-"
 
 def convert_mp3(new, lengths):
     import pydub
@@ -73,7 +74,7 @@ def convert_mp3(new, lengths):
 class Attack:
     def __init__(self, sess, loss_fn, phrase_length, max_audio_len,
                  learning_rate=10, num_iterations=5000, batch_size=1,
-                 mp3=False, l2penalty=float('inf')):
+                 mp3=False, l2penalty=float('inf'), beam_width=100):
         """
         Set up the attack procedure.
 
@@ -88,20 +89,50 @@ class Attack:
         self.phrase_length = phrase_length
         self.max_audio_len = max_audio_len
         self.mp3 = mp3
+        self.beam_width = beam_width
 
         # Create all the variables necessary
         # they are prefixed with qq_ just so that we know which
         # ones are ours so when we restore the session we don't
         # clobber them.
-        self.delta = delta = tf.Variable(np.zeros((batch_size, max_audio_len), dtype=np.float32), name='qq_delta')
-        self.mask = mask = tf.Variable(np.zeros((batch_size, max_audio_len), dtype=np.float32), name='qq_mask')
-        self.cwmask = cwmask = tf.Variable(np.zeros((batch_size, phrase_length), dtype=np.float32), name='qq_cwmask')
-        self.original = original = tf.Variable(np.zeros((batch_size, max_audio_len), dtype=np.float32), name='qq_original')
-        self.lengths = lengths = tf.Variable(np.zeros(batch_size, dtype=np.int32), name='qq_lengths')
-        self.importance = tf.Variable(np.zeros((batch_size, phrase_length), dtype=np.float32), name='qq_importance')
-        self.target_phrase = tf.Variable(np.zeros((batch_size, phrase_length), dtype=np.int32), name='qq_phrase')
-        self.target_phrase_lengths = tf.Variable(np.zeros((batch_size), dtype=np.int32), name='qq_phrase_lengths')
-        self.rescale = tf.Variable(np.zeros((batch_size,1), dtype=np.float32), name='qq_phrase_lengths')
+        bs_mal_shape = [batch_size, max_audio_len]
+        bs_pl_shape = [batch_size, phrase_length]
+        self.delta = delta = tf.get_variable('qq_delta',
+            bs_mal_shape,
+            dtype=np.float32,
+            initializer=tf.zeros_initializer)
+        self.mask = mask = tf.get_variable('qq_mask',
+            bs_mal_shape,
+            dtype=np.float32,
+            initializer=tf.zeros_initializer)
+        self.cwmask = cwmask = tf.get_variable('qq_cwmask',
+            bs_pl_shape
+            dtype=np.float32,
+            initializer=tf.zeros_initializer)
+        self.original = original = tf.get_variable('qq_original',
+            bs_mal_shape, 
+            dtype=np.float32,
+            initializer=tf.zeros_initializer)
+        self.lengths = tf.get_variable('qq_lengths',
+            np.zeros(batch_size,
+            dtype=np.int32)
+         initializer=tf.zeros_initializer)
+        self.importance = tf.get_variable('qq_importance',
+            bs_pl_shape,
+            dtype=np.float32,
+            initializer=tf.zeros_initializer)
+        self.target_phrase = tf.get_variable('qq_phrase',
+            bs_pl_shape,
+            dtype=np.int32,
+            initializer=tf.zeros_initializer)
+        self.target_phrase_lengths = tf.get_variable('qq_phrase_lengths',
+            [batch_size],
+            dtype=np.int32,
+            initializer=tf.zeros_initializer)
+        self.rescale = tf.get_variable('qq_phrase_lengths',
+            [batch_size,1],
+            dtype=np.float32,
+            initializer=tf.zeros_initializer)
 
         # Initially we bound the l_infty norm by 2000, increase this
         # constant if it's not big enough of a distortion for your dataset.
@@ -110,16 +141,15 @@ class Attack:
         # We set the new input to the model to be the abve delta
         # plus a mask, which allows us to enforce that certain
         # values remain constant 0 for length padding sequences.
-        self.new_input = new_input = self.apply_delta*mask + original
+        self.new_input = self.apply_delta*mask + original
 
         # We add a tiny bit of noise to help make sure that we can
         # clip our values to 16-bit integers and not break things.
-        noise = tf.random_normal(new_input.shape,
-                                 stddev=2)
-        pass_in = tf.clip_by_value(new_input+noise, -2**15, 2**15-1)
+        noise = tf.random_normal(self.new_input.shape, stddev=2)
+        pass_in = tf.clip_by_value(self.new_input + noise, -2**15, 2**15-1)
 
         # Feed this final value to get the logits.
-        self.logits = logits = get_logits(pass_in, lengths)
+        self.logits = get_logits(pass_in, self.lengths)
 
         # And finally restore the graph to make the classifier
         # actually do something interesting.
@@ -131,16 +161,16 @@ class Attack:
         if loss_fn == "CTC":
             target = ctc_label_dense_to_sparse(self.target_phrase, self.target_phrase_lengths, batch_size)
             
-            ctcloss = tf.nn.ctc_loss(labels=tf.cast(target, tf.int32),
-                                     inputs=logits, sequence_length=lengths)
+            self.ctcloss = tf.nn.ctc_loss(labels=tf.cast(target, tf.int32),
+                                     inputs=self.logits, sequence_length=self.lengths)
 
             # Slight hack: an infinite l2 penalty means that we don't penalize l2 distortion
             # The code runs faster at a slight cost of distortion, and also leaves one less
             # paramaeter that requires tuning.
             if not np.isinf(l2penalty):
-                loss = tf.reduce_mean((self.new_input-self.original)**2,axis=1) + l2penalty*ctcloss
+                self.loss = tf.reduce_mean((self.new_input - self.original)**2,axis=1) + l2penalty * self.ctcloss
             else:
-                loss = ctcloss
+                self.loss = self.ctcloss
             self.expanded_loss = tf.constant(0)
             
         elif loss_fn == "CW":
@@ -148,12 +178,9 @@ class Attack:
         else:
             raise
 
-        self.loss = loss
-        self.ctcloss = ctcloss
-        
         # Set up the Adam optimizer to perform gradient descent for us
         start_vars = set(x.name for x in tf.global_variables())
-        optimizer = tf.train.AdamOptimizer(learning_rate)
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
 
         grad,var = optimizer.compute_gradients(self.loss, [delta])[0]
         self.train = optimizer.apply_gradients([(tf.sign(grad),var)])
@@ -161,10 +188,10 @@ class Attack:
         end_vars = tf.global_variables()
         new_vars = [x for x in end_vars if x.name not in start_vars]
         
-        sess.run(tf.variables_initializer(new_vars+[delta]))
+        sess.run(tf.variables_initializer(new_vars + [delta]))
 
         # Decoder from the logits, to see how we're doing
-        self.decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=100)
+        self.decoded, _ = tf.nn.ctc_beam_search_decoder(self.logits, self.lengths, merge_repeated=False, beam_width=self.beam_width)
 
     def attack(self, audio, lengths, target, finetune=None):
         sess = self.sess
@@ -186,7 +213,7 @@ class Attack:
         sess.run(self.rescale.assign(np.ones((self.batch_size,1))))
 
         # Here we'll keep track of the best solution we've found so far
-        final_deltas = [None]*self.batch_size
+        final_deltas = [None] * self.batch_size
 
         if finetune is not None and len(finetune) > 0:
             sess.run(self.delta.assign(finetune-audio))
@@ -284,7 +311,6 @@ class Attack:
         return final_deltas
 
 
-    
 def main():
     """
     Do the attack here.
@@ -314,6 +340,9 @@ def main():
     parser.add_argument('--lr', type=int,
                         required=False, default=100,
                         help="Learning rate for optimization")
+    parser.add_argument('--beam_width', type=int,
+                        required=False, default=100,
+                        help="Beam width for CTC decoder")
     parser.add_argument('--iterations', type=int,
                         required=False, default=1000,
                         help="Maximum number of iterations of gradient descent")
@@ -325,7 +354,9 @@ def main():
                         help="Generate MP3 compression resistant adversarial examples")
     args = parser.parse_args()
     
-    with tf.Session() as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth=True
+    with tf.Session(config=config) as sess:
         finetune = []
         audios = []
         lengths = []
@@ -361,7 +392,8 @@ def main():
                         mp3=args.mp3,
                         learning_rate=args.lr,
                         num_iterations=args.iterations,
-                        l2penalty=args.l2penalty)
+                        l2penalty=args.l2penalty,
+                        beam_width=args.beam_width,)
         deltas = attack.attack(audios,
                                lengths,
                                [[toks.index(x) for x in phrase]]*len(audios),
@@ -383,4 +415,6 @@ def main():
                                            -2**15, 2**15-1),dtype=np.int16))
                 print("Final distortion", np.max(np.abs(deltas[i][:lengths[i]]-audios[i][:lengths[i]])))
 
-main()
+
+if __name__ == "__main__":
+    main()

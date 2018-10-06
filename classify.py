@@ -15,6 +15,7 @@ import struct
 import time
 import os
 import sys
+import string
 from collections import namedtuple
 sys.path.append("DeepSpeech")
 
@@ -56,10 +57,12 @@ from tf_logits import get_logits
 # These are the tokens that we're allowed to use.
 # The - token is special and corresponds to the epsilon
 # value in CTC decoding, and can not occur in the phrase.
-toks = " abcdefghijklmnopqrstuvwxyz'-"
+toks = " " + string.ascii_lowercase + "'-"
 
 def main():
-    with tf.Session() as sess:
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth=True
+    with tf.Session(config=config) as sess:
         for i in range(1,len(sys.argv)):
             if sys.argv[i].split(".")[-1] == 'mp3':
                 raw = pydub.AudioSegment.from_mp3(sys.argv[i])
@@ -88,5 +91,7 @@ def main():
             if len(sys.argv[i]) > 2:
                 print(sys.argv[i])
             print("".join([toks[x] for x in r[0].values]))
-        
-main()
+
+
+if __name__ == "__main__":
+    main()

@@ -342,6 +342,7 @@ def main():
         for i in range(len(args.input)):
             fs, audio = wav.read(args.input[i])
             assert fs == 16000
+            assert audio.dtype == np.int16
             print('source dB', 20*np.log10(np.max(np.abs(audio))))
             audios.append(list(audio))
             lengths.append(len(audio))

@@ -2,22 +2,17 @@ This is the code corresponding to the paper
 "Audio Adversarial Examples: Targeted Attacks on Speech-to-Text"
 Nicholas Carlini and David Wagner
 
-This release of the code is preliminary; it includes the CTC-based attack with a
-batch size of 1. This means it requires a slightly larger distortion, and is
-slower to run than the algorithm that is presented in the paper. Soon (TM) I
-will add these two improvements to this codebase.
-
 To generate adversarial examples for your own files, follow the below process
 and modify the arguments to attack,py. Ensure that the file is sampled at
-16KHz. You may want to modify the number of iterations that the attack algorithm
-is allowed to run.
+16KHz and uses signed 16-bit ints as the data type. You may want to modify
+the number of iterations that the attack algorithm is allowed to run.
 
 
 Instructions for basic use:
 
 1. Install the dependencies
 
-pip3 install --user numpy scipy tensorflow-gpu pandas python_speech_features
+pip3 install --user numpy scipy tensorflow-gpu==1.8.0 pandas python_speech_features
 
 2. Clone the Mozilla DeepSpeech repository into a folder called DeepSpeech:
 
@@ -50,3 +45,12 @@ pip3 install deepspeech-gpu
 8. Classify the generated phrase
 
 deepspeech models/output_graph.pb adversarial.wav models/alphabet.txt
+
+
+---
+
+WARNING: THE CODE TO HOOK INTO DEEPSPEECH IS UGLY. This means I require a
+very specific version of DeepSpeech (0.1.1) and TensorFlow (1.8.0) using
+python 3.5. I can't promise it won't set your computer on fire if you use
+any other versioning setup. (In particular, it WILL NOT work with
+DeepSpeech 0.2.0+, and WILL NOT work with TensorFlow 1.10+.)

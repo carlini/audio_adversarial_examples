@@ -9,11 +9,32 @@ from tensorflow.core.framework.graph_pb2 import *
 import numpy as np
 import tensorflow as tf
 
+if tf.__version__ != "1.8.0":
+    print("-"*80)
+    print("-"*80)
+    print("WARNING")
+    print("It looks like you have the wrong version of DeepSpeech installed.")
+    print("Please ensure you are using TensorFlow 1.8.0")
+    print("Everything may or may not work otherwise.")
+    print("-"*80)
+    print("-"*80)
+
 import sys
 sys.path.append("DeepSpeech")
 
 from util.audio import audiofile_to_input_vector
 from util.text import ctc_label_dense_to_sparse
+
+import binascii
+if binascii.crc32(open("DeepSpeech/DeepSpeech.py","rb").read()) != 1142193310:
+    print("-"*80)
+    print("-"*80)
+    print("WARNING")
+    print("It looks like you have the wrong version of DeepSpeech installed.")
+    print("Please ensure you are using DeepSpeech 0.1.1")
+    print("Everything may or may not work otherwise.")
+    print("-"*80)
+    print("-"*80)
 
 # Okay, so this is ugly. We don't want DeepSpeech to crash
 # when we haven't built the language model.

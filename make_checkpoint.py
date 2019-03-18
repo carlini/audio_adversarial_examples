@@ -68,6 +68,8 @@ with tf.Graph().as_default() as graph:
         # Okay, so this is ugly again.
         # We just want it to not crash.
         tf.app.flags.FLAGS.alphabet_config_path = "DeepSpeech/data/alphabet.txt"
+        # Make it stop complaining
+        tf.app.flags.FLAGS.decoder_library_path = "."
         DeepSpeech.initialize_globals()
         logits2 = DeepSpeech.BiRNN(new_input, [len(mfcc)], [0]*10)
 

@@ -8,12 +8,34 @@ and modify the arguments to attack,py. Ensure that the file is sampled at
 16KHz and uses signed 16-bit ints as the data type. You may want to modify
 the number of iterations that the attack algorithm is allowed to run.
 
+WARNING: THIS IS NOT THE CODE USED IN THE PAPER. If you just want to get going
+generating adversarial examples on audio then proceed as described below.
+
+The current master branch points to code which will run on TensorFlow 1.14 and
+DeepSpeech 0.4.1, an almost-recent version of the dependencies. (Large portions
+of tf_logits.py will need to be re-written to run on DeepSpeech 0.5.1 which uses
+a new feature extraction pipeline with TensorFlow's C++ implementation. If you
+feel motivated to do that I would gladly accept a PR.)
+
+However, IF YOU ARE TRYING TO REPRODUCE THE PAPER (or just have decided
+that you enjoy pain and want to suffer through dependency hell) then you
+will have to checkout commit a8d5f675ac8659072732d3de2152411f07c7aa3a and
+follow the README from there.
+
+
 
 Instructions for basic use:
 
 1. Install the dependencies
 
-pip3 install --user numpy scipy tensorflow-gpu==1.8.0 pandas python_speech_features
+pip3 install tensorflow-gpu==1.14 progressbar numpy scipy pandas python_speech_features tables attrdict pyxdg
+
+pip3 install $(python3 util/taskcluster.py --decoder)
+
+Download and install
+https://git-lfs.github.com/
+
+1b. Make sure you have installed git lfs. Otherwise later steps will mysteriously fail.
 
 2. Clone the Mozilla DeepSpeech repository into a folder called DeepSpeech:
 
@@ -21,37 +43,28 @@ git clone https://github.com/mozilla/DeepSpeech.git
 
 2b. Checkout the correct version of the code:
 
-(cd DeepSpeech; git checkout tags/v0.1.1)
+(cd DeepSpeech; git checkout tags/v0.4.1)
+
+2c. If you get an error with tflite_convert, comment out DeepSpeech.py Line 21
+# from tensorflow.contrib.lite.python import tflite_convert
 
 3. Download the DeepSpeech model
 
-wget https://github.com/mozilla/DeepSpeech/releases/download/v0.1.0/deepspeech-0.1.0-models.tar.gz
-tar -xzf deepspeech-0.1.0-models.tar.gz
+wget https://github.com/mozilla/DeepSpeech/releases/download/v0.4.1/deepspeech-0.4.1-checkpoint.tar.gz
+tar -xzf deepspeech-0.4.1-checkpoint.tar.gz
 
-4. Verify that you have a file models/output_graph.pb, its MD5 sum should be
-08a9e6e8dc450007a0df0a37956bc795.
+4. Verify that you have a file deepspeech-0.4.1-checkpoint/model.v0.4.1.data-00000-of-00001
+Its MD5 sum should be
+ca825ad95066b10f5e080db8cb24b165
 
-5. Convert the .pb to a TensorFlow checkpoint file
+5. Check that you can classify normal images correctly
 
-python3 make_checkpoint.py
+python3 attack.py --in sample-000000.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 
 6. Generate adversarial examples
 
-python3 attack.py --lr 10 --in sample.wav --target "example" --out adversarial.wav
+python3 attack.py --in sample-000000.wav --target "this is a test" --out adv.wav --iterations 1000 --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 
-7. (optional) Install the deepseech utility:
+8. Verify the attack succeeded
 
-pip3 install deepspeech-gpu
-
-8. Classify the generated phrase
-
-deepspeech models/output_graph.pb adversarial.wav models/alphabet.txt
-
-
----
-
-WARNING: THE CODE TO HOOK INTO DEEPSPEECH IS UGLY. This means I require a
-very specific version of DeepSpeech (0.1.1) and TensorFlow (1.8.0) using
-python 3.5. I can't promise it won't set your computer on fire if you use
-any other versioning setup. (In particular, it WILL NOT work with
-DeepSpeech 0.2.0+, and WILL NOT work with TensorFlow 1.10+.)
+python3 attack.py --in adv.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1

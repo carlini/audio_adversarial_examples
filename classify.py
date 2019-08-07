@@ -11,82 +11,73 @@ import argparse
 
 import scipy.io.wavfile as wav
 
-import struct
 import time
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
 import sys
 from collections import namedtuple
 sys.path.append("DeepSpeech")
+import DeepSpeech
 
 try:
     import pydub
+    import struct
 except:
     print("pydub was not loaded, MP3 compression will not work")
 
-# Okay, so this is ugly. We don't want DeepSpeech to crash.
-# So we're just going to monkeypatch TF and make some things a no-op.
-# Sue me.
-tf.load_op_library = lambda x: x
-tmp = os.path.exists
-os.path.exists = lambda x: True
-class Wrapper:
-    def __init__(self, d):
-        self.d = d
-    def __getattr__(self, x):
-        return self.d[x]
-class HereBeDragons:
-    d = {}
-    FLAGS = Wrapper(d)
-    def __getattr__(self, x):
-        return self.do_define
-    def do_define(self, k, v, *x):
-        self.d[k] = v
-tf.app.flags = HereBeDragons()
-import DeepSpeech
-os.path.exists = tmp
-
-# More monkey-patching, to stop the training coordinator setup
-DeepSpeech.TrainingCoordinator.__init__ = lambda x: None
-DeepSpeech.TrainingCoordinator.start = lambda x: None
-
-
-from util.text import ctc_label_dense_to_sparse
 from tf_logits import get_logits
+
 
 # These are the tokens that we're allowed to use.
 # The - token is special and corresponds to the epsilon
 # value in CTC decoding, and can not occur in the phrase.
 toks = " abcdefghijklmnopqrstuvwxyz'-"
 
+
+
 def main():
+    parser = argparse.ArgumentParser(description=None)
+    parser.add_argument('--in', type=str, dest="input",
+                        required=True,
+                        help="Input audio .wav file(s), at 16KHz (separated by spaces)")
+    parser.add_argument('--restore_path', type=str,
+                        required=True,
+                        help="Path to the DeepSpeech checkpoint (ending in model0.4.1)")
+    args = parser.parse_args()
+    while len(sys.argv) > 1:
+        sys.argv.pop()
     with tf.Session() as sess:
-        for i in range(1,len(sys.argv)):
-            if sys.argv[i].split(".")[-1] == 'mp3':
-                raw = pydub.AudioSegment.from_mp3(sys.argv[i])
-                audio = np.array([struct.unpack("<h", raw.raw_data[i:i+2])[0] for i in range(0,len(raw.raw_data),2)])
-            elif sys.argv[i].split(".")[-1] == 'wav':
-                _, audio = wav.read(sys.argv[i])
-            else:
-                raise Exception("Unknown file format")
-            N = len(audio)
-            new_input = tf.placeholder(tf.float32, [1, N])
-            lengths = tf.placeholder(tf.int32, [1])
+        if args.input.split(".")[-1] == 'mp3':
+            raw = pydub.AudioSegment.from_mp3(args.input)
+            audio = np.array([struct.unpack("<h", raw.raw_data[i:i+2])[0] for i in range(0,len(raw.raw_data),2)])
+        elif args.input.split(".")[-1] == 'wav':
+            _, audio = wav.read(args.input)
+        else:
+            raise Exception("Unknown file format")
+        N = len(audio)
+        new_input = tf.placeholder(tf.float32, [1, N])
+        lengths = tf.placeholder(tf.int32, [1])
 
-            with tf.variable_scope("", reuse=tf.AUTO_REUSE):
-                logits = get_logits(new_input, lengths)
+        with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+            logits = get_logits(new_input, lengths)
 
-            if i == 1:
-                saver = tf.train.Saver()
-                saver.restore(sess, "models/session_dump")
+        saver = tf.train.Saver()
+        saver.restore(sess, args.restore_path)
 
-            decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=500)
-            
-            length = (len(audio)-1)//320
-            l = len(audio)
-            r = sess.run(decoded, {new_input: [audio],
-                                   lengths: [length]})
-            if len(sys.argv[i]) > 2:
-                print(sys.argv[i])
-            print("".join([toks[x] for x in r[0].values]))
-        
+        decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=500)
+
+        print('logits shape', logits.shape)
+        length = (len(audio)-1)//320
+        l = len(audio)
+        r = sess.run(decoded, {new_input: [audio],
+                               lengths: [length]})
+
+        print("-"*80)
+        print("-"*80)
+
+        print("Classification:")
+        print("".join([toks[x] for x in r[0].values]))
+        print("-"*80)
+        print("-"*80)
+
 main()

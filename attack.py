@@ -24,34 +24,9 @@ try:
 except:
     print("pydub was not loaded, MP3 compression will not work")
 
-# Okay, so this is ugly. We don't want DeepSpeech to crash.
-# So we're just going to monkeypatch TF and make some things a no-op.
-# Sue me.
-tf.load_op_library = lambda x: x
-tmp = os.path.exists
-os.path.exists = lambda x: True
-class Wrapper:
-    def __init__(self, d):
-        self.d = d
-    def __getattr__(self, x):
-        return self.d[x]
-class HereBeDragons:
-    d = {}
-    FLAGS = Wrapper(d)
-    def __getattr__(self, x):
-        return self.do_define
-    def do_define(self, k, v, *x):
-        self.d[k] = v
-tf.app.flags = HereBeDragons()
 import DeepSpeech
-os.path.exists = tmp
 
-# More monkey-patching, to stop the training coordinator setup
-DeepSpeech.TrainingCoordinator.__init__ = lambda x: None
-DeepSpeech.TrainingCoordinator.start = lambda x: None
-
-
-from util.text import ctc_label_dense_to_sparse
+from tensorflow.python.keras.backend import ctc_label_dense_to_sparse
 from tf_logits import get_logits
 
 # These are the tokens that we're allowed to use.
@@ -73,7 +48,7 @@ def convert_mp3(new, lengths):
 class Attack:
     def __init__(self, sess, loss_fn, phrase_length, max_audio_len,
                  learning_rate=10, num_iterations=5000, batch_size=1,
-                 mp3=False, l2penalty=float('inf')):
+                 mp3=False, l2penalty=float('inf'), restore_path=None):
         """
         Set up the attack procedure.
 
@@ -124,12 +99,12 @@ class Attack:
         # And finally restore the graph to make the classifier
         # actually do something interesting.
         saver = tf.train.Saver([x for x in tf.global_variables() if 'qq' not in x.name])
-        saver.restore(sess, "models/session_dump")
+        saver.restore(sess, restore_path)
 
         # Choose the loss function we want -- either CTC or CW
         self.loss_fn = loss_fn
         if loss_fn == "CTC":
-            target = ctc_label_dense_to_sparse(self.target_phrase, self.target_phrase_lengths, batch_size)
+            target = ctc_label_dense_to_sparse(self.target_phrase, self.target_phrase_lengths)
             
             ctcloss = tf.nn.ctc_loss(labels=tf.cast(target, tf.int32),
                                      inputs=logits, sequence_length=lengths)
@@ -282,8 +257,7 @@ class Attack:
                                                -2**15, 2**15-1),dtype=np.int16))
 
         return final_deltas
-
-
+    
     
 def main():
     """
@@ -323,7 +297,12 @@ def main():
     parser.add_argument('--mp3', action="store_const", const=True,
                         required=False,
                         help="Generate MP3 compression resistant adversarial examples")
+    parser.add_argument('--restore_path', type=str,
+                        required=True,
+                        help="Path to the DeepSpeech checkpoint (ending in model0.4.1)")
     args = parser.parse_args()
+    while len(sys.argv) > 1:
+        sys.argv.pop()
     
     with tf.Session() as sess:
         finetune = []
@@ -362,7 +341,8 @@ def main():
                         mp3=args.mp3,
                         learning_rate=args.lr,
                         num_iterations=args.iterations,
-                        l2penalty=args.l2penalty)
+                        l2penalty=args.l2penalty,
+                        restore_path=args.restore_path)
         deltas = attack.attack(audios,
                                lengths,
                                [[toks.index(x) for x in phrase]]*len(audios),

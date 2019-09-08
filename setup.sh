@@ -1,14 +1,10 @@
 #!/bin/bash
 
-if [[ "$1" == "--gpu" ]]
-then
-    docker build -t "aae_deepspeech_041_gpu"  - < docker/aae_deepspeech_041_gpu.dockerfile
-elif [[ "$1" == "--cpu" ]]
-then
-    docker build -t "aae_deepspeech_041_cpu"  - < docker/aae_deepspeech_041_cpu.dockerfile
-fi
-
+docker build -t "aae_deepspeech_041_gpu"  - < docker/aae_deepspeech_041_gpu.dockerfile
+docker build -t "aae_deepspeech_041_cpu"  - < docker/aae_deepspeech_041_cpu.dockerfile
 git clone https://github.com/mozilla/DeepSpeech.git
 cd DeepSpeech
 git checkout v0.4.1
 cd ..
+wget https://github.com/mozilla/DeepSpeech/releases/download/v0.4.1/deepspeech-0.4.1-checkpoint.tar.gz
+tar -xzf deepspeech-0.4.1-checkpoint.tar.gz

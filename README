@@ -22,6 +22,8 @@ that you enjoy pain and want to suffer through dependency hell) then you
 will have to checkout commit a8d5f675ac8659072732d3de2152411f07c7aa3a and
 follow the README from there.
 
+
+
 Setup using Docker:
 With Nvidia-GPU support:
     1. Install Nvidia-Docker

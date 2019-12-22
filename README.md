@@ -30,8 +30,9 @@ follow the README from there.
 https://github.com/NVIDIA/nvidia-docker
 
 2. Download DeepSpeech and build the Docker images:
-
-```$ ./setup.sh```
+```
+$ ./setup.sh
+```
 
 3. Start the container using the image we just build
 ```$ docker run --gpus all -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_gpu```

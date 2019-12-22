@@ -24,7 +24,7 @@ follow the README from there.
 
 
 
-# Setup using Docker:
+# Installation
 ## With Nvidia-GPU support:
 1. Install Nvidia-Docker
 https://github.com/NVIDIA/nvidia-docker

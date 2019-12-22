@@ -47,6 +47,7 @@ https://docs.docker.com/install/
 `docker run -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_cpu`
 
 
+## Test Setup
 ### 4. Check that you can classify normal audio correctly
 
 `python3 classify.py --in sample-000000.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1`

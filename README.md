@@ -37,14 +37,14 @@ https://github.com/NVIDIA/nvidia-docker
 
 
 ## CPU-only (Skip if already installed with Nvidia-GPU support):
-    ### 1. Install Docker
-    https://docs.docker.com/install/
+### 1. Install Docker
+https://docs.docker.com/install/
 
-    ### 2. Download DeepSpeech and build the Docker images:
-    `./setup.sh`
+### 2. Download DeepSpeech and build the Docker images:
+`./setup.sh`
 
-    ### 3. Start the container using the image we just build
-    `docker run -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_cpu`
+### 3. Start the container using the image we just build
+`docker run -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_cpu`
 
 
 ### 4. Check that you can classify normal audio correctly

@@ -36,7 +36,7 @@ follow the README from there.
     docker run --gpus all -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_gpu
 
 
-## CPU-only:
+## CPU-only (Skip if already installed with Nvidia-GPU support):
     ### 1. Install Docker
     https://docs.docker.com/install/
 

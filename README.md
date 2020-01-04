@@ -73,7 +73,9 @@ $ python3 classify.py --in adv.wav --restore_path deepspeech-0.4.1-checkpoint/mo
 
 # Docker Hub
 The docker images are available on Docker Hub.
+
 CPU-Version: `tomdoerr/aae_deepspeech_041_cpu`
+
 GPU-Version: `tomdoerr/aae_deepspeech_041_gpu`
 
 

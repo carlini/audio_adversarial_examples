@@ -34,13 +34,13 @@ $ ./setup.sh
 ```
 
 ### With Nvidia-GPU support:
-3. Start the container using the image we just build
+3. Start the container using the GPU image we just build
 ```
 $ docker run --gpus all -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_gpu
 ```
 
 ### CPU-only (Skip if already installed with Nvidia-GPU support):
-3. Start the container using the image we just build
+3. Start the container using the CPU image we just build
 ```
 $ docker run -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_cpu
 ```

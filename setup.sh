@@ -4,7 +4,7 @@ docker build -t "aae_deepspeech_041_gpu"  - < docker/aae_deepspeech_041_gpu.dock
 docker build -t "aae_deepspeech_041_cpu"  - < docker/aae_deepspeech_041_cpu.dockerfile
 git clone https://github.com/mozilla/DeepSpeech.git
 cd DeepSpeech
-git checkout v0.4.1_pin_numpy
+git checkout v0.4.1
 cd ..
 if [ ! -d deepspeech-0.4.1-checkpoint ]
 then

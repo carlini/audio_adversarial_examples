@@ -149,13 +149,15 @@ widgetsnbextension==3.5.1 \
 wrapt==1.11.2
 
 
-RUN git clone https://github.com/mozilla/DeepSpeech.git
+#RUN git clone https://github.com/mozilla/DeepSpeech.git
+run echo test
+RUN git clone -b tags/v0.4.1_pin_numpy https://github.com/tom-doerr/DeepSpeech 
 RUN wget https://github.com/git-lfs/git-lfs/releases/download/v2.8.0/git-lfs-linux-amd64-v2.8.0.tar.gz
 RUN tar -xvzf git-lfs-linux-amd64-v2.8.0.tar.gz
 RUN ./install.sh
 RUN git lfs install
 RUN git lfs --version
-RUN cd DeepSpeech; git checkout tags/v0.4.1
+#RUN cd DeepSpeech; git checkout tags/v0.4.1
 
 # Commands to build Tensorflow and DeepSpeech.
 # Executing them is not necessary if you just want
@@ -170,6 +172,9 @@ RUN cd DeepSpeech; git checkout tags/v0.4.1
 #RUN cd DeepSpeech/native_client && make deepspeech
 
 RUN rm /usr/bin/python && ln -s /usr/bin/python3 /usr/bin/python
+RUN pip3 uninstall -y numpy &&\
+rm -rf '/usr/local/lib/python3.5/dist-packages/numpy'
+RUN pip3 install numpy==1.18.5
 RUN cd DeepSpeech/native_client/ctcdecode && make bindings NUM_PROCESSES=8
 RUN pip3 install DeepSpeech/native_client/ctcdecode/dist/*.whl
 

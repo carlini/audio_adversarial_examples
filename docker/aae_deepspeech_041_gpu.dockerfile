@@ -19,23 +19,6 @@ RUN apt-get update -y && apt-get install -y \
  ffmpeg \
  python3-levenshtein
                                                    
-#RUN pip install \
-# numpy \
-# tensorflow-gpu \
-# hyperopt \
-# scipy \
-# pandas==0.24.0 \
-# tables \
-# attrdict \
-# progressbar \
-# keras \
-# hyperas \
-# librosa \
-# deepspeech==0.1.1 \
-# python_speech_features \
-# pyxdg \
-# pydub \
-# mlflow
 
 # Packages from 'pip3 freeze' output minus packages that 
 # could not be installed via pip.
@@ -165,7 +148,6 @@ Werkzeug==0.15.4 \
 widgetsnbextension==3.5.1 \
 wrapt==1.11.2
 
-#RUN pip install -U protobuf
 
 RUN git clone https://github.com/mozilla/DeepSpeech.git
 RUN wget https://github.com/git-lfs/git-lfs/releases/download/v2.8.0/git-lfs-linux-amd64-v2.8.0.tar.gz
@@ -174,8 +156,6 @@ RUN ./install.sh
 RUN git lfs install
 RUN git lfs --version
 RUN cd DeepSpeech; git checkout tags/v0.4.1
-#RUN git clone https://github.com/mozilla/tensorflow.git
-#RUN cd tensorflow && git checkout r1.12 && ln -s ../DeepSpeech/native_client ./ 
 
 # Commands to build Tensorflow and DeepSpeech.
 # Executing them is not necessary if you just want

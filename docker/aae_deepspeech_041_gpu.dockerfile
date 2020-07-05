@@ -150,7 +150,6 @@ wrapt==1.11.2
 
 
 #RUN git clone https://github.com/mozilla/DeepSpeech.git
-run echo test
 RUN git clone -b tags/v0.4.1_pin_numpy https://github.com/tom-doerr/DeepSpeech 
 RUN wget https://github.com/git-lfs/git-lfs/releases/download/v2.8.0/git-lfs-linux-amd64-v2.8.0.tar.gz
 RUN tar -xvzf git-lfs-linux-amd64-v2.8.0.tar.gz

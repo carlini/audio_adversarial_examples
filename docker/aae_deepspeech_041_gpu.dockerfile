@@ -149,14 +149,12 @@ widgetsnbextension==3.5.1 \
 wrapt==1.11.2
 
 
-#RUN git clone https://github.com/mozilla/DeepSpeech.git
 RUN git clone -b tags/v0.4.1_pin_numpy https://github.com/tom-doerr/DeepSpeech 
 RUN wget https://github.com/git-lfs/git-lfs/releases/download/v2.8.0/git-lfs-linux-amd64-v2.8.0.tar.gz
 RUN tar -xvzf git-lfs-linux-amd64-v2.8.0.tar.gz
 RUN ./install.sh
 RUN git lfs install
 RUN git lfs --version
-#RUN cd DeepSpeech; git checkout tags/v0.4.1
 
 # Commands to build Tensorflow and DeepSpeech.
 # Executing them is not necessary if you just want

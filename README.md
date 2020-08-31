@@ -25,7 +25,7 @@ follow the README from there.
 
 
 # Installation
-1. Install Docker
+1. Install Docker.
 On Ubuntu/Debian/Linux-Mint etc.:
 ```
 sudo apt-get install docker.io

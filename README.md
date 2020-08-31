@@ -44,7 +44,7 @@ $ ./setup.sh
 3. Install the NVIDIA Container Toolkit
 This step will only work on Linux and is only necessary if you want GPU support.
 As far as I know it's not possible to use a GPU with docker under Windows/Mac.
-On Ubuntu/Debian/Linux-Mint etc.:
+On Ubuntu/Debian/Linux-Mint etc. you can install it with the following commands:
 ```sh
 # Add the package repositories
 distribution=$(. /etc/os-release;echo $ID$VERSION_ID)

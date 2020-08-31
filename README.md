@@ -65,7 +65,7 @@ $ docker run --gpus all -it --mount src=$(pwd),target=/audio_adversarial_example
 ```
 
 ### CPU-only (Skip if already started with Nvidia-GPU support):
-#### 4. Start the container using the CPU image we just build
+4. Start the container using the CPU image we just build
 ```
 $ docker run -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_cpu
 ```

@@ -54,7 +54,7 @@ curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.li
 sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
 sudo systemctl restart docker
 ```
-Instructions for other platforms (CentOS/Fedora/Raspbian):
+Instructions for other platforms (CentOS/RHEL):
 https://github.com/NVIDIA/nvidia-docker
 
 4. Start the container using the GPU image we just build

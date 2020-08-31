@@ -25,7 +25,7 @@ follow the README from there.
 
 
 # Installation
-#### 1. Install Docker
+1. Install Docker
 On Ubuntu/Debian/Linux-Mint etc.:
 ```
 sudo apt-get install docker.io
@@ -35,13 +35,13 @@ Instructions for other platforms:
 https://docs.docker.com/install/
 
 
-#### 2. Download DeepSpeech and build the Docker images:
+2. Download DeepSpeech and build the Docker images:
 ```
 $ ./setup.sh
 ```
 
 ### With Nvidia-GPU support:
-#### 3. Install the NVIDIA Container Toolkit
+3. Install the NVIDIA Container Toolkit
 This step will only work on Linux and is only necessary if you want GPU support.
 As far as I know it's not possible to use the GPU with docker under Windows/Mac.
 
@@ -59,7 +59,7 @@ sudo systemctl restart docker
 Instructions for other platforms:
 https://github.com/NVIDIA/nvidia-docker
 
-#### 4. Start the container using the GPU image we just build
+4. Start the container using the GPU image we just build
 ```
 $ docker run --gpus all -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind -w /audio_adversarial_examples aae_deepspeech_041_gpu
 ```
@@ -72,17 +72,17 @@ $ docker run -it --mount src=$(pwd),target=/audio_adversarial_examples,type=bind
 
 
 ### Test Setup
-#### 5. Check that you can classify normal audio correctly
+5. Check that you can classify normal audio correctly
 ```
 $ python3 classify.py --in sample-000000.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 ```
 
-#### 6. Generate adversarial examples
+6. Generate adversarial examples
 ```
 $ python3 attack.py --in sample-000000.wav --target "this is a test" --out adv.wav --iterations 1000 --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 ```
 
-#### 7. Verify the attack succeeded
+7. Verify the attack succeeded
 ```
 $ python3 classify.py --in adv.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 ```

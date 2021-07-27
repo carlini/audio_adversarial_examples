@@ -105,12 +105,12 @@ GPU-Version: `tomdoerr/aae_deepspeech_041_gpu`
 # Direct Install
 
 These are the original instructions from earlier. They will work, but require manual installs.
+As of July 2021, these instructions are confirmed to work on a new machine with CUDA 10 installed.
 
 
 1. Install the dependencies
 ```
-pip3 install tensorflow-gpu==1.14 progressbar numpy scipy pandas python_speech_features tables attrdict pyxdg
-pip3 install $(python3 util/taskcluster.py --decoder)
+pip3 install tensorflow-gpu==1.14 progressbar numpy scipy pandas python_speech_features tables attrdict pyxdg ds-ctcdecoder
 ```
 
 Download and install
@@ -128,11 +128,6 @@ git clone https://github.com/mozilla/DeepSpeech.git
 (cd DeepSpeech; git checkout tags/v0.4.1)
 ```
 
-2c. If you get an error with tflite_convert, comment out DeepSpeech.py Line 21
-```
-from tensorflow.contrib.lite.python import tflite_convert
-```
-
 3. Download the DeepSpeech model
 
 ```
@@ -148,8 +143,14 @@ ca825ad95066b10f5e080db8cb24b165
 
 5. Check that you can classify normal images correctly
 ```
-python3 attack.py --in sample-000000.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
+python3 classify.py --in sample-000000.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 ```
+
+5b. If you get an error with tflite_convert, comment out DeepSpeech.py Line 21
+```
+from tensorflow.contrib.lite.python import tflite_convert
+```
+
 
 6. Generate adversarial examples
 ```
@@ -158,5 +159,5 @@ python3 attack.py --in sample-000000.wav --target "this is a test" --out adv.wav
 
 8. Verify the attack succeeded
 ```
-python3 attack.py --in adv.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
+python3 classify.py --in adv.wav --restore_path deepspeech-0.4.1-checkpoint/model.v0.4.1
 ```

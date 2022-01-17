@@ -7,32 +7,45 @@
 
 import numpy as np
 import tensorflow as tf
-import argparse
 from shutil import copyfile
-
 import scipy.io.wavfile as wav
-
 import struct
+import pandas as pd
 import time
-import os
 import sys
 from collections import namedtuple
 sys.path.append("DeepSpeech")
-
+import DeepSpeech
 try:
     import pydub
 except:
     print("pydub was not loaded, MP3 compression will not work")
-
-import DeepSpeech
-
 from tensorflow.python.keras.backend import ctc_label_dense_to_sparse
 from tf_logits import get_logits
+from ds_ctcdecoder import ctc_beam_search_decoder, Scorer
+from deepspeech_training.util.flags import create_flags, FLAGS
+from deepspeech_training.util.config import Config, initialize_globals
+import absl.flags
 
-# These are the tokens that we're allowed to use.
-# The - token is special and corresponds to the epsilon
-# value in CTC decoding, and can not occur in the phrase.
-toks = " abcdefghijklmnopqrstuvwxyz'-"
+# Define arguments to be parsed
+f = absl.flags
+f.DEFINE_multi_string('input', None, 'Input audio .wav file(s), at 16KHz (separated by spaces)')
+f.DEFINE_multi_string('output', None, 'Path for the adversarial example(s)')
+f.DEFINE_string('outprefix', None, 'Prefix of path for adversarial examples')
+f.DEFINE_string('target', None, 'Target transcription')
+f.DEFINE_multi_string('finetune', None, 'Initial .wav file(s) to use as a starting point')
+f.DEFINE_integer('lr', 100, 'Learning rate for optimization')
+f.DEFINE_integer('iterations', 1000, 'Maximum number of iterations of gradient descent')
+f.DEFINE_float('l2penalty', float('inf'), 'Weight for l2 penalty on loss function')
+f.DEFINE_boolean('mp3', False, 'Generate MP3 compression resistant adversarial examples')
+f.DEFINE_string('restore_path', None, 'Path to the DeepSpeech checkpoint (ending in best_dev-1466475)')
+f.DEFINE_string('lang', "en", 'Language of the input audio (English: en, German: de)')
+
+# Define which arguments are required
+f.mark_flag_as_required('input')
+f.mark_flag_as_required('target')
+f.mark_flag_as_required('restore_path')
+    
 
 def convert_mp3(new, lengths):
     import pydub
@@ -51,11 +64,10 @@ class Attack:
                  mp3=False, l2penalty=float('inf'), restore_path=None):
         """
         Set up the attack procedure.
-
         Here we create the TF graph that we're going to use to
         actually generate the adversarial examples.
         """
-        
+        print("\nInitializing attack..\n")
         self.sess = sess
         self.learning_rate = learning_rate
         self.num_iterations = num_iterations
@@ -100,7 +112,7 @@ class Attack:
         # actually do something interesting.
         saver = tf.train.Saver([x for x in tf.global_variables() if 'qq' not in x.name])
         saver.restore(sess, restore_path)
-
+    
         # Choose the loss function we want -- either CTC or CW
         self.loss_fn = loss_fn
         if loss_fn == "CTC":
@@ -121,7 +133,7 @@ class Attack:
         elif loss_fn == "CW":
             raise NotImplemented("The current version of this project does not include the CW loss function implementation.")
         else:
-            raise
+            raise NotImplemented
 
         self.loss = loss
         self.ctcloss = ctcloss
@@ -138,20 +150,26 @@ class Attack:
         
         sess.run(tf.variables_initializer(new_vars+[delta]))
 
-        # Decoder from the logits, to see how we're doing
-        self.decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=100)
+        # Convert logits to probs for CTC decoder using softmax
+        self.probs = tf.squeeze(tf.nn.softmax(self.logits, name='logits'))
+        
+        # Initialize scorer for CTC decoder
+        if FLAGS.scorer_path:
+            self.scorer = Scorer(FLAGS.lm_alpha, FLAGS.lm_beta,
+                            FLAGS.scorer_path, Config.alphabet)
+        else:
+            self.scorer = None
+        print("Initialization done.\n")
 
-    def attack(self, audio, lengths, target, finetune=None):
+
+    def attack(self, audio, lengths, target, toks, finetune=None):
+        print("Start attack..\n")
         sess = self.sess
 
         # Initialize all of the variables
-        # TODO: each of these assign ops creates a new TF graph
-        # object, and they should be all created only once in the
-        # constructor. It works fine as long as you don't call
-        # attack() a bunch of times.
         sess.run(tf.variables_initializer([self.delta]))
         sess.run(self.original.assign(np.array(audio)))
-        sess.run(self.lengths.assign((np.array(lengths)-1)//320))
+        sess.run(self.lengths.assign((np.array(lengths)-(2*Config.audio_step_samples/3))//320))
         sess.run(self.mask.assign(np.array([[1 if i < l else 0 for i in range(self.max_audio_len)] for l in lengths])))
         sess.run(self.cwmask.assign(np.array([[1 if i < l else 0 for i in range(self.phrase_length)] for l in (np.array(lengths)-1)//320])))
         sess.run(self.target_phrase_lengths.assign(np.array([len(x) for x in target])))
@@ -167,39 +185,44 @@ class Attack:
             sess.run(self.delta.assign(finetune-audio))
         
         # We'll make a bunch of iterations of gradient descent here
-        now = time.time()
+        #now = time.time()
         MAX = self.num_iterations
+        first_hits = np.zeros((self.batch_size,))
+        best_hits = np.zeros((self.batch_size,))
         for i in range(MAX):
-            iteration = i
-            now = time.time()
-
             # Print out some debug information every 10 iterations.
             if i%10 == 0:
-                new, delta, r_out, r_logits = sess.run((self.new_input, self.delta, self.decoded, self.logits))
-                lst = [(r_out, r_logits)]
+                new, delta, probs_out, r_logits = sess.run((self.new_input, self.delta, self.probs, self.logits))
+
+                lst = [(probs_out, r_logits)]
                 if self.mp3:
+                    # TODO: Implement mp3 support 
+                    raise NotImplemented("The current version does not support mp3 conversion.")
                     mp3ed = convert_mp3(new, lengths)
-                    
-                    mp3_out, mp3_logits = sess.run((self.decoded, self.logits),
+                    mp3_probs, mp3_logits = sess.run((self.probs, self.logits),
                                                    {self.new_input: mp3ed})
+                    mp3_out = ctc_beam_search_decoder(mp3_probs, Config.alphabet, FLAGS.beam_width,
+                                                scorer=self.scorer, cutoff_prob=FLAGS.cutoff_prob,
+                                                cutoff_top_n=FLAGS.cutoff_top_n)
                     lst.append((mp3_out, mp3_logits))
-
-                for out, logits in lst:
-                    chars = out[0].values
-
-                    res = np.zeros(out[0].dense_shape)+len(toks)-1
                 
-                    for ii in range(len(out[0].values)):
-                        x,y = out[0].indices[ii]
-                        res[x,y] = out[0].values[ii]
-
-                    # Here we print the strings that are recognized.
-                    res = ["".join(toks[int(x)] for x in y).replace("-","") for y in res]
-                    print("\n".join(res))
-                    
+                batch_size = r_logits.shape[1]
+                for out, logits in lst:
+                    out_list = []
+                    for ii in range(batch_size):
+                        if batch_size == 1:
+                            probs = probs_out
+                        else:
+                            probs = probs_out[:,ii,:]
+                        decoded = ctc_beam_search_decoder(probs, Config.alphabet, FLAGS.beam_width,
+                                                        scorer=self.scorer, cutoff_prob=FLAGS.cutoff_prob,
+                                                        cutoff_top_n=FLAGS.cutoff_top_n)
+                        # Here we print the strings that are recognized.
+                        print(decoded[0][1])
+                        out_list.append(decoded)
                     # And here we print the argmax of the alignment.
                     res2 = np.argmax(logits,axis=2).T
-                    res2 = ["".join(toks[int(x)] for x in y[:(l-1)//320]) for y,l in zip(res2,lengths)]
+                    res2 = ["".join(toks[int(x)] for x in y[:(l-int(2*Config.audio_step_samples/3))//320]) for y,l in zip(res2,lengths)]
                     print("\n".join(res2))
 
 
@@ -210,7 +233,7 @@ class Attack:
             else:
                 feed_dict = {}
                 
-            # Actually do the optimization ste
+            # Actually do the optimization step
             d, el, cl, l, logits, new_input, _ = sess.run((self.delta, self.expanded_loss,
                                                            self.ctcloss, self.loss,
                                                            self.logits, self.new_input,
@@ -226,7 +249,7 @@ class Attack:
                 # if we have (or if it's the final epoch) then we
                 # should record our progress and decrease the
                 # rescale constant.
-                if (self.loss_fn == "CTC" and i%10 == 0 and res[ii] == "".join([toks[x] for x in target[ii]])) \
+                if (self.loss_fn == "CTC" and i%10 == 0 and out_list[ii][0][1] == "".join([toks[x] for x in target[ii]])) \
                    or (i == MAX-1 and final_deltas[ii] is None):
                     # Get the current constant
                     rescale = sess.run(self.rescale)
@@ -246,122 +269,140 @@ class Attack:
                     # Adjust the best solution found so far
                     final_deltas[ii] = new_input[ii]
 
-                    print("Worked i=%d ctcloss=%f bound=%f"%(ii,cl[ii], 2000*rescale[ii][0]))
-                    #print('delta',np.max(np.abs(new_input[ii]-audio[ii])))
+                    print("Worked i=%d ctcloss=%f bound=%f"%(ii, cl[ii], 2000*rescale[ii][0]))
+                    
+                    if (first_hits[ii] == 0):
+                        print("First hit for audio {} at iteration {}".format(ii, i))
+                        first_hits[ii]=i
+                    else:
+                        best_hits[ii]=i
+
                     sess.run(self.rescale.assign(rescale))
 
                     # Just for debugging, save the adversarial example
                     # to /tmp so we can see it if we want
-                    wav.write("/tmp/adv.wav", 16000,
+                    wav.write("tmp/adv.wav", 16000,
                               np.array(np.clip(np.round(new_input[ii]),
                                                -2**15, 2**15-1),dtype=np.int16))
-
-        return final_deltas
+        
+        return final_deltas, first_hits, best_hits  
     
-    
-def main():
-    """
-    Do the attack here.
 
-    This is all just boilerplate; nothing interesting
-    happens in this method.
-
-    For now we only support using CTC loss and only generating
-    one adversarial example at a time.
-    """
-    parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--in', type=str, dest="input", nargs='+',
-                        required=True,
-                        help="Input audio .wav file(s), at 16KHz (separated by spaces)")
-    parser.add_argument('--target', type=str,
-                        required=True,
-                        help="Target transcription")
-    parser.add_argument('--out', type=str, nargs='+',
-                        required=False,
-                        help="Path for the adversarial example(s)")
-    parser.add_argument('--outprefix', type=str,
-                        required=False,
-                        help="Prefix of path for adversarial examples")
-    parser.add_argument('--finetune', type=str, nargs='+',
-                        required=False,
-                        help="Initial .wav file(s) to use as a starting point")
-    parser.add_argument('--lr', type=int,
-                        required=False, default=100,
-                        help="Learning rate for optimization")
-    parser.add_argument('--iterations', type=int,
-                        required=False, default=1000,
-                        help="Maximum number of iterations of gradient descent")
-    parser.add_argument('--l2penalty', type=float,
-                        required=False, default=float('inf'),
-                        help="Weight for l2 penalty on loss function")
-    parser.add_argument('--mp3', action="store_const", const=True,
-                        required=False,
-                        help="Generate MP3 compression resistant adversarial examples")
-    parser.add_argument('--restore_path', type=str,
-                        required=True,
-                        help="Path to the DeepSpeech checkpoint (ending in model0.4.1)")
-    args = parser.parse_args()
-    while len(sys.argv) > 1:
-        sys.argv.pop()
+def main(_):
+    initialize_globals()
+    # These are the tokens that we're allowed to use.
+    # The - token is special and corresponds to the epsilon
+    # value in CTC decoding, and can not occur in the phrase.
+    toks = " abcdefghijklmnopqrstuvwxyz'-"
     
     with tf.Session() as sess:
         finetune = []
         audios = []
         lengths = []
+        names = []
+        source_dBs = []
+        distortions = []
+        high_pertub_bounds = []
+        low_pertub_bounds = []
 
-        if args.out is None:
-            assert args.outprefix is not None
+        if FLAGS.output is None:
+            assert FLAGS.outprefix is not None
         else:
-            assert args.outprefix is None
-            assert len(args.input) == len(args.out)
-        if args.finetune is not None and len(args.finetune):
-            assert len(args.input) == len(args.finetune)
-        
+            assert FLAGS.outprefix is None
+            assert len(FLAGS.input) == len(FLAGS.output)
+        if FLAGS.finetune is not None and len(FLAGS.finetune):
+            assert len(FLAGS.input) == len(FLAGS.finetune)
+            
         # Load the inputs that we're given
-        for i in range(len(args.input)):
-            fs, audio = wav.read(args.input[i])
+        # TODO: [FINDBUG] loading multiple inputs is possible, 
+        #       but there are some weird things going on at the end of every transcription 
+        for i in range(len(FLAGS.input)):
+            fs, audio = wav.read(FLAGS.input[i])
+            names.append(FLAGS.input[i])
             assert fs == 16000
             assert audio.dtype == np.int16
-            print('source dB', 20*np.log10(np.max(np.abs(audio))))
+            if (audio.shape[-1] == 2):
+                audio = np.squeeze(audio[:,1])
+                print(audio.shape)
+            source_dB = 20 * np.log10(np.max(np.abs(audio)))
+            print('source dB', source_dB)
+            source_dBs.append(source_dB)
             audios.append(list(audio))
             lengths.append(len(audio))
 
-            if args.finetune is not None:
-                finetune.append(list(wav.read(args.finetune[i])[1]))
-
+            if FLAGS.finetune is not None:
+                finetune.append(list(wav.read(FLAGS.finetune[i])[1]))   
+            
         maxlen = max(map(len,audios))
         audios = np.array([x+[0]*(maxlen-len(x)) for x in audios])
         finetune = np.array([x+[0]*(maxlen-len(x)) for x in finetune])
-
-        phrase = args.target
-
-        # Set up the attack class and run it
+        
+        phrase = FLAGS.target 
+        print("\nAttack phrase: ", phrase) 
+        
         attack = Attack(sess, 'CTC', len(phrase), maxlen,
                         batch_size=len(audios),
-                        mp3=args.mp3,
-                        learning_rate=args.lr,
-                        num_iterations=args.iterations,
-                        l2penalty=args.l2penalty,
-                        restore_path=args.restore_path)
-        deltas = attack.attack(audios,
+                        mp3=FLAGS.mp3,
+                        learning_rate=FLAGS.lr,
+                        num_iterations=FLAGS.iterations,
+                        l2penalty=FLAGS.l2penalty,
+                        restore_path=FLAGS.restore_path)
+
+        start_time = time.time() 
+        deltas, first_hits, best_hits = attack.attack(audios,
                                lengths,
                                [[toks.index(x) for x in phrase]]*len(audios),
+                               toks,
                                finetune)
+        runtime = time.time() - start_time
 
+        print("Finished in {}s.".format(runtime))
         # And now save it to the desired output
-        if args.mp3:
+        if FLAGS.mp3:
             convert_mp3(deltas, lengths)
-            copyfile("/tmp/saved.mp3", args.out[0])
+            copyfile("/tmp/saved.mp3", FLAGS.output[0])
             print("Final distortion", np.max(np.abs(deltas[0][:lengths[0]]-audios[0][:lengths[0]])))
         else:
-            for i in range(len(args.input)):
-                if args.out is not None:
-                    path = args.out[i]
+            for i in range(len(FLAGS.input)):
+                if FLAGS.output is not None:
+                    path = FLAGS.output[i]
                 else:
-                    path = args.outprefix+str(i)+".wav"
+                    path = FLAGS.outprefix+str(i)+".wav"
                 wav.write(path, 16000,
                           np.array(np.clip(np.round(deltas[i][:lengths[i]]),
                                            -2**15, 2**15-1),dtype=np.int16))
-                print("Final distortion", np.max(np.abs(deltas[i][:lengths[i]]-audios[i][:lengths[i]])))
+                
+                # Define metrics for evaluation
+                diff = deltas[i][:lengths[i]]-audios[i][:lengths[i]]
+                high_pertub_bound = np.max(np.abs(diff))
+                low_pertub_bound = np.min(np.abs(diff[diff!=0]))
+                distortion = 20 * np.log10(np.max(np.abs(diff))) - source_dBs[i]
+                high_pertub_bounds.append(high_pertub_bound)
+                low_pertub_bounds.append(low_pertub_bound)
+                distortions.append(distortion)
+                print("Final noise loudness: ", distortion)
 
-main()
+    # Create data_dict to store values for csv file
+    data_dict = {
+        'filename': names,
+        'length' : lengths,
+        'attack_runtime': [runtime]*len(names),
+        'source_dB': source_dBs,
+        'noise_loudness': distortions,
+        'high_pertubation_bound' : high_pertub_bounds,
+        'low_pertubation_bound' : low_pertub_bounds,
+        'first_hit' : first_hits,
+        'best_hit' : best_hits
+    }     
+    df = pd.DataFrame(data_dict, columns=['filename', 'length', 'attack_runtime', 'source_dB', 'noise_loudness', 'high_pertubation_bound', 'low_pertubation_bound', 'first_hit', 'best_hit'])
+    csv_filename = "tmp/attack-{}.csv".format(FLAGS.lang, time.strftime("%Y%m%d-%H%M%S"))    
+    df.to_csv(csv_filename, index=False, header=True)   
+ 
+                
+def run_script():
+    create_flags()
+    absl.app.run(main)
+    
+    
+if __name__ == "__main__":
+    run_script()

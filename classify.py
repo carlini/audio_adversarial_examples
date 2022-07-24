@@ -1,23 +1,12 @@
-## classify.py -- actually classify a sequence with DeepSpeech
-##
-## Copyright (C) 2017, Nicholas Carlini <nicholas@carlini.com>.
-##
-## This program is licenced under the BSD 2-Clause licence,
-## contained in the LICENCE file in this directory.
-
+import sys
 import numpy as np
 import tensorflow as tf
-import argparse
-
 import scipy.io.wavfile as wav
-
 import time
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = ''
 import sys
-from collections import namedtuple
-sys.path.append("DeepSpeech")
-import DeepSpeech
+import pandas as pd
 
 try:
     import pydub
@@ -25,59 +14,88 @@ try:
 except:
     print("pydub was not loaded, MP3 compression will not work")
 
+sys.path.append("DeepSpeech")
+import DeepSpeech
 from tf_logits import get_logits
+from deepspeech_training.util.flags import create_flags, FLAGS
+from deepspeech_training.util.config import Config, initialize_globals
+from ds_ctcdecoder import ctc_beam_search_decoder, Scorer
+import absl.flags
+
+f = absl.flags
+# define parsing arguments
+f.DEFINE_string('input', None, 'Input audio .wav file(s), at 16KHz (separated by spaces)')
+f.DEFINE_string('restore_path', None, 'Path to the DeepSpeech checkpoint (ending in best_dev-1466475)')
+f.register_validator('input',
+                         os.path.isfile,
+                         message='The input audio pointed to by --input must exist and be readable.')
 
 
-# These are the tokens that we're allowed to use.
-# The - token is special and corresponds to the epsilon
-# value in CTC decoding, and can not occur in the phrase.
-toks = " abcdefghijklmnopqrstuvwxyz'-"
-
-
-
-def main():
-    parser = argparse.ArgumentParser(description=None)
-    parser.add_argument('--in', type=str, dest="input",
-                        required=True,
-                        help="Input audio .wav file(s), at 16KHz (separated by spaces)")
-    parser.add_argument('--restore_path', type=str,
-                        required=True,
-                        help="Path to the DeepSpeech checkpoint (ending in model0.4.1)")
-    args = parser.parse_args()
-    while len(sys.argv) > 1:
-        sys.argv.pop()
+def classify():
     with tf.Session() as sess:
-        if args.input.split(".")[-1] == 'mp3':
-            raw = pydub.AudioSegment.from_mp3(args.input)
+        if FLAGS.input.split(".")[-1] == 'mp3':
+            raw = pydub.AudioSegment.from_mp3(FLAGS.input)
             audio = np.array([struct.unpack("<h", raw.raw_data[i:i+2])[0] for i in range(0,len(raw.raw_data),2)])
-        elif args.input.split(".")[-1] == 'wav':
-            _, audio = wav.read(args.input)
+        elif FLAGS.input.split(".")[-1] == 'wav':
+            _, audio = wav.read(FLAGS.input)
+            # for audios with 2 channels, take 2nd channel
+            if (audio.shape[-1] == 2):
+                audio = np.squeeze(audio[:,1])
+                print(audio.shape)
         else:
             raise Exception("Unknown file format")
-        N = len(audio)
+        
+        N = audio.shape[0]
         new_input = tf.placeholder(tf.float32, [1, N])
         lengths = tf.placeholder(tf.int32, [1])
-
+        
         with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+            # Here we should be using the preprocessing step from DS v0.9.3
             logits = get_logits(new_input, lengths)
-
+     
         saver = tf.train.Saver()
-        saver.restore(sess, args.restore_path)
-
-        decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=500)
-
-        print('logits shape', logits.shape)
-        length = (len(audio)-1)//320
-        l = len(audio)
-        r = sess.run(decoded, {new_input: [audio],
+        saver.restore(sess, FLAGS.restore_path)
+        
+        #  # Apply softmax for CTC decoder
+        probs = tf.nn.softmax(logits, name='logits')
+        probs = tf.squeeze(probs)
+        
+        # length was previously (N-1)//320 
+        length = (N-(2*Config.audio_step_samples/3))//320
+        r = sess.run(probs, {new_input: [audio],
                                lengths: [length]})
-
+        
+        if FLAGS.scorer_path:
+            scorer = Scorer(FLAGS.lm_alpha, FLAGS.lm_beta,
+                            FLAGS.scorer_path, Config.alphabet)
+        else:
+            scorer = None
+        decoded = ctc_beam_search_decoder(r, Config.alphabet, FLAGS.beam_width,
+                                          scorer=scorer, cutoff_prob=FLAGS.cutoff_prob,
+                                          cutoff_top_n=FLAGS.cutoff_top_n)
+        
         print("-"*80)
         print("-"*80)
-
         print("Classification:")
-        print("".join([toks[x] for x in r[0].values]))
+        print(decoded[0][1])
         print("-"*80)
         print("-"*80)
+        
+        data_dict = {'name': [FLAGS.input], 'transcript': [decoded[0][1]]}
+        df = pd.DataFrame(data_dict, columns=['name', 'transcript'])
+        csv_filename = "tmp/classify-{}.csv".format(time.strftime("%Y%m%d-%H%M%S"))    
+        df.to_csv(csv_filename, index=False, header=True)   
 
-main()
+def main(_):
+    initialize_globals()
+    classify()
+        
+        
+def run_script():
+    create_flags()
+    absl.app.run(main)
+
+
+if __name__ == '__main__':
+    run_script()
+    
